@@ -12,6 +12,7 @@ from sqlalchemy import (
     select
 )
 from sqlalchemy.orm import relationship, selectinload
+from .schemas import RoleResponseSchema, QuestionSchema
 import enum
 import os, dotenv
 from pathlib import Path
@@ -77,9 +78,23 @@ class JobRole(Base):
 
         await db.commit()
 
-        await db.refresh(role)
+        #await db.refresh(role)
 
-        return role
+
+        await db.flush()  # ensures role.id exists
+
+        # Add questions
+        await Question.add_questions_from_ai_json(db, role.id, data)
+
+        await db.commit()
+
+        # Eagerly load questions before returning
+        result = await db.execute(
+            select(cls).options(selectinload(cls.questions)).where(cls.id == role.id)
+        )
+        role_with_questions = result.scalar_one()
+
+        return role_with_questions
 
     @classmethod
     async def get_all_roles(cls, db: AsyncSession) -> List["JobRole"]:
@@ -172,7 +187,26 @@ async def load_job_questions_from_json(json_data):
                 data=json_data
             )
 
-            return role
+            questions_list = [QuestionSchema(
+                    id=q.id,
+                    question_type=q.question_type or "",
+                    question_text=q.question_text,
+                    created_at=q.created_at,
+                    updated_at=q.updated_at
+                )
+                for q in role.questions
+            ]
+
+            # Construct RoleResponseSchema for each role
+            role_data = RoleResponseSchema(
+                id=role.id,
+                role_name=role.role_name,
+                role_text=role.role_text,
+                questions=questions_list
+            )
+
+            print("ROLE DATA COMPLETED", role_data)
+            return role_data
     except Exception as e:
         print("FAILED TO UPDATE DATABASE", e)
 
@@ -194,28 +228,28 @@ if os.path.isfile(dotenv_file):
     dotenv.load_dotenv(dotenv_file)
 
 if __name__ == "__main__":
-    # files_directory = PROJECT_ROOT / "files/job_descriptions/out"
-    # processed_directory = PROJECT_ROOT / "files/job_descriptions/processed"
-    # processed_directory.mkdir(parents=True, exist_ok=True)
+    files_directory = PROJECT_ROOT / "files/job_descriptions/out"
+    processed_directory = PROJECT_ROOT / "files/job_descriptions/processed"
+    processed_directory.mkdir(parents=True, exist_ok=True)
 
-    # job_role_json_files = [f for f in files_directory.glob("*.json") if f.is_file()]
-    # for job_role_file in job_role_json_files:
-    #     try:
-    #         with open(job_role_file, 'r') as file:
-    #             role_data_dict = json.load(file)
-    #             print(role_data_dict)
-    #             file.close()
-    #             #Put the data into the database
-    #             asyncio.run(load_job_questions_from_json(role_data_dict))
-    #             # Move file after successful processing
-    #             destination = processed_directory / job_role_file.name
-    #             print("DESTINATION", destination)
-    #             job_role_file.rename(destination)
-    #     except Exception as e:
-    #         print(e)
+    job_role_json_files = [f for f in files_directory.glob("*.json") if f.is_file()]
+    for job_role_file in job_role_json_files:
+        try:
+            with open(job_role_file, 'r') as file:
+                role_data_dict = json.load(file)
+                print(role_data_dict)
+                file.close()
+                #Put the data into the database
+                asyncio.run(load_job_questions_from_json(role_data_dict))
+                # Move file after successful processing
+                destination = processed_directory / job_role_file.name
+                print("DESTINATION", destination)
+                job_role_file.rename(destination)
+        except Exception as e:
+            print(e)
 
     #Get the job roles from the database
-    asyncio.run(fetch_job_roles())
+    #asyncio.run(fetch_job_roles())
 
 
 
