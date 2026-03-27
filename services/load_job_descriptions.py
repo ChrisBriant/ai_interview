@@ -191,6 +191,119 @@ Requirements:
 
 
 
+def ai_get_interview_questions_from_description(description, role_name):
+
+    if not API_KEY:
+        print("❌ API key not configured.")
+        return
+
+    client = OpenAI(api_key=API_KEY)
+
+    # --- HIGH QUALITY PROMPT ---
+    prompt = """
+You are a senior technical interviewer designing an interview for a candidate.
+
+Your task is to analyse the job description and generate realistic interview questions
+that a hiring panel would ask for this role.
+
+Follow these rules carefully:
+
+1. Extract the job role title from the job description.
+2. Identify the key technologies, responsibilities, and seniority level.
+3. Generate high-quality interview questions relevant to the role.
+
+The questions must include:
+
+• Technical deep-dive questions
+• Architecture / design questions
+• Scenario / troubleshooting questions
+• Behavioural experience questions
+
+The questions should resemble real interviews at strong engineering organisations.
+
+Avoid generic questions. Focus on:
+- real implementation details
+- system design decisions
+- troubleshooting scenarios
+- security considerations
+- operational experience
+
+Return ONLY valid JSON in the following format:
+
+{
+  "role_name": "string",
+  "technical_questions": [
+    "question"
+  ],
+  "architecture_questions": [
+    "question"
+  ],
+  "scenario_questions": [
+    "question"
+  ],
+  "behavioural_questions": [
+    "question"
+  ]
+}
+
+Requirements:
+- Generate 5 questions per category
+- Each question must be unique
+- Do not include explanations
+- Do not include markdown
+- Output valid JSON only
+"""
+
+    try:
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0.4,
+            max_tokens=2000,
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You generate structured interview questions from job descriptions."
+                },
+                {
+                    "role": "user",
+                    "content": f"{prompt}\n\nJOB DESCRIPTION:\n{description}"
+                }
+            ]
+        )
+
+        response_data = response.choices[0].message.content.strip()
+        # Convert string to dict
+        response_dict = json.loads(response_data)
+
+        # Add role_text
+        response_dict["role_text"] = description
+        
+        # Output directory
+        output_dir = Path(PROJECT_ROOT) / "files/job_descriptions/out"
+        os.makedirs(output_dir, exist_ok=True)
+
+        output_file = output_dir / f"{role_name}.json"
+
+        # Now write to file
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(response_dict, f, indent=2)
+
+  
+
+        # Save response
+        # with open(output_file, "w", encoding="utf-8") as f:
+        #     f.write(response_data)
+
+        print(f"✅ Interview questions saved to: {output_file}")
+
+        return response_dict
+
+    except Exception as e:
+        print("❌ Error generating interview questions:", str(e))
+
+
 if __name__ == "__main__":
     job_description_files = load_job_description_file_names()
     get_interview_questions_from_ai(job_description_files[1])
