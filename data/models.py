@@ -7,9 +7,11 @@ from sqlalchemy import (
     Text,
     ForeignKey,
     TIMESTAMP,
+    DateTime,
     func,
     Enum,
-    select
+    select,
+    update
 )
 from sqlalchemy.orm import relationship, selectinload
 from .schemas import RoleResponseSchema, QuestionSchema
@@ -110,6 +112,28 @@ class JobRole(Base):
         roles = result.scalars().all()
         return roles
 
+
+    @classmethod
+    async def get_random_questions(
+        cls,
+        db: AsyncSession,
+        role_id: int,
+        limit: int = 5
+    ):
+        """
+        Fetch `limit` random questions for the given role_id.
+        """
+        # Select questions for this role
+        result = await db.execute(
+            select(Question)
+            .where(Question.role_id == role_id)
+            .order_by(func.random())  # PostgreSQL random ordering
+            .limit(limit)
+        )
+
+        questions = result.scalars().all()
+        return questions
+
 class Question(Base):
     __tablename__ = "questions"
 
@@ -149,6 +173,12 @@ class Question(Base):
         back_populates="questions"
     )
 
+    answers = relationship(
+        "Answer",
+        back_populates = "question",
+        cascade="all, delete-orphan"
+    )
+
     @classmethod
     async def add_questions_from_ai_json(
         cls,
@@ -177,7 +207,140 @@ class Question(Base):
 
                 db.add(question)
 
+class Session(Base):
+    __tablename__ = "sessions"
 
+    id = Column(Integer, primary_key=True)
+    thread_id = Column(
+        String,
+        nullable=False
+    )
+    started_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    finished_at = Column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    question_answers = relationship(
+        "Answer",
+        back_populates="session"
+    ) 
+
+    @classmethod
+    async def create_session(cls, db: AsyncSession, thread_id: str):
+        session = cls(thread_id=thread_id)
+
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+
+        return session
+
+    @classmethod
+    async def close_session(cls, db: AsyncSession, session_id: int):
+
+        stmt = (
+            update(cls)
+            .where(cls.id == session_id)
+            .values(finished_at=datetime.now(timezone.utc))
+        )
+
+        await db.execute(stmt)
+        await db.commit()
+
+    @classmethod
+    async def get_thread_id(cls, db: AsyncSession, session_id: int):
+
+        result = await db.execute(
+            select(cls.thread_id).where(cls.id == session_id)
+        )
+
+        return result.scalar_one_or_none()
+
+
+class Answer(Base):
+    __tablename__ = "answers"
+
+    id = Column(Integer, primary_key=True)
+    answer_text = Column(Text, nullable=False)
+    session_id = Column(
+        Integer,
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    question_id = Column(
+        Integer,
+        ForeignKey("questions.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    added_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    question = relationship(
+        "Question",
+        back_populates="answers"
+    )
+
+    session = relationship(
+        "Session",
+        back_populates="question_answers"
+    ) 
+
+    @classmethod
+    async def create_answer(
+        cls,
+        db: AsyncSession,
+        session_id: int,
+        question_id: int,
+        answer_text: str
+    ):
+        answer = cls(
+            session_id=session_id,
+            question_id=question_id,
+            answer_text=answer_text
+        )
+
+        db.add(answer)
+        await db.commit()
+        await db.refresh(answer)
+
+        return answer
+
+    @classmethod
+    async def create_answers_bulk(
+        cls,
+        db: AsyncSession,
+        session_id: int,
+        answers: list[dict]
+    ):
+        """
+        answers = [
+            {"question_id": 1, "answer_text": "..."},
+            {"question_id": 2, "answer_text": "..."},
+        ]
+        """
+
+        objects = [
+            cls(
+                session_id=session_id,
+                question_id=a["question_id"],
+                answer_text=a["answer_text"]
+            )
+            for a in answers
+        ]
+
+        db.add_all(objects)
+        await db.commit()
+
+        return objects
 
 async def load_job_questions_from_json(json_data):
     try:
