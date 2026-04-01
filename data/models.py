@@ -112,7 +112,6 @@ class JobRole(Base):
         roles = result.scalars().all()
         return roles
 
-
     @classmethod
     async def get_random_questions(
         cls,
@@ -123,16 +122,21 @@ class JobRole(Base):
         """
         Fetch `limit` random questions for the given role_id.
         """
-        # Select questions for this role
-        result = await db.execute(
+        # Build the query
+        stmt = (
             select(Question)
             .where(Question.role_id == role_id)
-            .order_by(func.random())  # PostgreSQL random ordering
+            .order_by(func.random())
             .limit(limit)
         )
 
+        # Execute against the async session
+        result = await db.execute(stmt)
+
+        # Return list of Question objects
         questions = result.scalars().all()
         return questions
+
 
 class Question(Base):
     __tablename__ = "questions"
@@ -180,6 +184,16 @@ class Question(Base):
     )
 
     @classmethod
+    async def get_by_ids(cls, db: AsyncSession, question_ids: List[int]) -> List["Question"]:
+        """
+        Fetch questions given a list of question IDs.
+        """
+        stmt = select(cls).where(cls.id.in_(question_ids))
+        result = await db.execute(stmt)
+        questions = result.scalars().all()
+        return questions
+
+    @classmethod
     async def add_questions_from_ai_json(
         cls,
         db: AsyncSession,
@@ -213,7 +227,7 @@ class Session(Base):
     id = Column(Integer, primary_key=True)
     thread_id = Column(
         String,
-        nullable=False
+        nullable=True
     )
     started_at = Column(
         DateTime(timezone=True),
@@ -232,7 +246,18 @@ class Session(Base):
     ) 
 
     @classmethod
-    async def create_session(cls, db: AsyncSession, thread_id: str):
+    async def exists(cls, db: AsyncSession, session_id: int) -> bool:
+        """
+        Check if a session with the given ID exists in the database.
+        Returns True if it exists, False otherwise.
+        """
+        result = await db.execute(
+            select(cls.id).where(cls.id == session_id)
+        )
+        return result.scalar() is not None
+
+    @classmethod
+    async def create_session(cls, db: AsyncSession, thread_id: str | None):
         session = cls(thread_id=thread_id)
 
         db.add(session)
@@ -261,6 +286,23 @@ class Session(Base):
         )
 
         return result.scalar_one_or_none()
+
+    @classmethod
+    async def get_session_with_questions_and_answers(cls, db: AsyncSession, session_id: int):
+        """
+        Fetch a session by ID, including all questions and their associated answers.
+        """
+        result = await db.execute(
+            select(cls)
+            .where(cls.id == session_id)
+            .options(
+                selectinload(cls.question_answers)
+                .selectinload(Answer.question)  # load linked question for each answer
+            )
+        )
+
+        session_obj = result.scalar_one_or_none()
+        return session_obj
 
 
 class Answer(Base):
@@ -315,19 +357,16 @@ class Answer(Base):
         return answer
 
     @classmethod
-    async def create_answers_bulk(
-        cls,
-        db: AsyncSession,
-        session_id: int,
-        answers: list[dict]
-    ):
+    async def create_answers_bulk(cls, db: AsyncSession, session_id: int, answers: list[dict]):
         """
-        answers = [
+        Bulk create answers and return the session object with all questions and answers loaded.
+        `answers` is a list of dicts:
+        [
             {"question_id": 1, "answer_text": "..."},
             {"question_id": 2, "answer_text": "..."},
         ]
         """
-
+        # Create Answer objects
         objects = [
             cls(
                 session_id=session_id,
@@ -337,11 +376,24 @@ class Answer(Base):
             for a in answers
         ]
 
+        # Add and commit
         db.add_all(objects)
         await db.commit()
 
-        return objects
+        # Load the session with all questions and answers
+        result = await db.execute(
+            select(Session)
+            .where(Session.id == session_id)
+            .options(
+                selectinload(Session.question_answers)
+                .selectinload(Answer.question)  # optional: eager load question data too
+            )
+        )
 
+        session_obj = result.scalar_one_or_none()
+        return session_obj
+
+#TESTING
 async def load_job_questions_from_json(json_data):
     try:
         async with SessionLocal() as session:

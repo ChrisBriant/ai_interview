@@ -26,5 +26,23 @@ class RoleResponseSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class SessionWithQuestionIdsSchema(BaseModel):
+    session_id : int
+    question_ids : List[int]
+
+class AnswerSchema(BaseModel):
+    id : int
+    answer_text : str
+    added_at : datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class QuestionAnswersSchema(BaseModel):
+    question : QuestionSchema
+    answers : List[AnswerSchema]
+
+class SessionResponseSchema(BaseModel):
+    id : int
+    question_answers : List[QuestionAnswersSchema]
 
 
