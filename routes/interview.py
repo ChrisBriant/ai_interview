@@ -26,6 +26,7 @@ import json
 import os
 import bleach
 import base64
+from services.auth import get_api_key
 
 router = APIRouter()
 
@@ -38,7 +39,7 @@ ALLOWED_REDIRECTS = [
 
 
 @router.post("/createroleandquestionset", response_model = RoleResponseSchema, status_code=status.HTTP_201_CREATED)
-async def create_role_and_question_set(role_and_description : RoleAndDescriptionSchema):
+async def create_role_and_question_set(role_and_description : RoleAndDescriptionSchema, api_key: str = Depends(get_api_key)):
     """
         Uses AI to generate an interview question set for a given job role and job description
     """
@@ -80,7 +81,7 @@ async def create_role_and_question_set(role_and_description : RoleAndDescription
 
 
 @router.get("/getroleswithquestions", response_model = List[RoleResponseSchema])
-async def get_roles_with_questions():
+async def get_roles_with_questions(api_key: str = Depends(get_api_key)):
     try:
         async with SessionLocal() as session:
             roles = await JobRole.get_all_roles(db=session)
