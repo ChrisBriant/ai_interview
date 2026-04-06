@@ -16,6 +16,7 @@ from data.schemas import (
     QuestionAnswersSchema,
     AnswerSchema,
     SessionResponseSchema,
+    RoleQuestionAnswerInputSchema
 )
 from services.utils import construct_session_response
 from services.load_job_descriptions import ai_get_interview_questions_from_description
@@ -164,7 +165,13 @@ async def ask_questions(session_and_question_ids : SessionWithQuestionIdsSchema)
         return session_response
 
     
-
+@router.post("/scoreandsuggestanswer", response_model = str)
+async def score_and_suggest_answer(role_q_a_input : RoleQuestionAnswerInputSchema, api_key: str = Depends(get_api_key)):
+    """
+        Scores the user's answer and suggests an alternative answer
+    """
+    async with SessionLocal() as session:
+        question = Question.get_by_id(role_q_a_input.question_id)
 
 
 

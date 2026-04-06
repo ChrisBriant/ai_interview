@@ -190,6 +190,20 @@ class Question(Base):
     )
 
     @classmethod
+    async def get_by_id(cls, db: AsyncSession, question_id: int) -> List["Question"]:
+        """
+            Fetch a single question.
+        """
+        stmt = select(cls).options(
+            selectinload(cls.role),
+        ).where(
+            cls.id == question_id
+        )
+        result = await db.execute(stmt)
+        question = result.scalar_one()
+        return question
+
+    @classmethod
     async def get_by_ids(cls, db: AsyncSession, question_ids: List[int]) -> List["Question"]:
         """
         Fetch questions given a list of question IDs.

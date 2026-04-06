@@ -45,4 +45,10 @@ class SessionResponseSchema(BaseModel):
     id : int
     question_answers : List[QuestionAnswersSchema]
 
+class RoleQuestionAnswerInputSchema(BaseModel):
+    session_id : int
+    role_id : int
+    question_id : int
+    user_answer : str
+
 
