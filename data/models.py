@@ -86,9 +86,9 @@ class JobRole(Base):
         await db.flush()  # ensures role.id exists
 
         # Add questions
-        await Question.add_questions_from_ai_json(db, role.id, data)
+        # await Question.add_questions_from_ai_json(db, role.id, data)
 
-        await db.commit()
+        # await db.commit()
 
         # Eagerly load questions before returning
         result = await db.execute(
@@ -183,6 +183,12 @@ class Question(Base):
         cascade="all, delete-orphan"
     )
 
+    scored_answers = relationship(
+        "ScoredAnswer",
+        back_populates="scored_question",
+        cascade="all, delete-orphan"
+    )
+
     @classmethod
     async def get_by_ids(cls, db: AsyncSession, question_ids: List[int]) -> List["Question"]:
         """
@@ -239,12 +245,12 @@ class Session(Base):
         DateTime(timezone=True),
         nullable=True
     )
-
+ 
     question_answers = relationship(
         "Answer",
         back_populates="session"
     ) 
-
+    
     @classmethod
     async def exists(cls, db: AsyncSession, session_id: int) -> bool:
         """
@@ -336,6 +342,23 @@ class Answer(Base):
         back_populates="question_answers"
     ) 
 
+
+    # Scored as user's answer
+    scored_as_user = relationship(
+        "ScoredAnswer",
+        foreign_keys="ScoredAnswer.user_answer_id",
+        back_populates="user_answer",
+        cascade="all, delete-orphan"
+    )
+
+    # Scored as suggested answer
+    scored_as_suggested = relationship(
+        "ScoredAnswer",
+        foreign_keys="ScoredAnswer.suggested_answer_id",
+        back_populates="suggested_answer",
+        cascade="all, delete-orphan"
+    )
+
     @classmethod
     async def create_answer(
         cls,
@@ -393,6 +416,52 @@ class Answer(Base):
         session_obj = result.scalar_one_or_none()
         return session_obj
 
+class ScoredAnswer(Base):
+    #Needs a model that stores the score, question_id, user_answer_id, suggested_answer_id
+    __tablename__ = "scored_answers"
+
+    id = Column(Integer, primary_key=True)
+    score = Column(Integer, nullable=False)
+    question_id = Column(
+        Integer,
+        ForeignKey("questions.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    user_answer_id = Column(
+        Integer,
+        ForeignKey("answers.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    suggested_answer_id = Column(
+        Integer,
+        ForeignKey("answers.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    added_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    # ✅ Question relationship
+    scored_question = relationship(
+        "Question",
+        back_populates="scored_answers"
+    )
+
+    # ✅ Disambiguate foreign keys
+    user_answer = relationship(
+        "Answer",
+        foreign_keys=[user_answer_id],
+        back_populates="scored_as_user"
+    )
+
+    suggested_answer = relationship(
+        "Answer",
+        foreign_keys=[suggested_answer_id],
+        back_populates="scored_as_suggested"
+    )
+
 #TESTING
 async def load_job_questions_from_json(json_data):
     try:
@@ -424,6 +493,8 @@ async def load_job_questions_from_json(json_data):
             return role_data
     except Exception as e:
         print("FAILED TO UPDATE DATABASE", e)
+ 
+
 
 async def fetch_job_roles():
     try:

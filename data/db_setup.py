@@ -1,6 +1,6 @@
 import asyncio
 from .db import engine, Base
-from .models import JobRole,Question,QuestionType,Session,Answer
+from .models import JobRole,Question,QuestionType,Session,Answer,ScoredAnswer
 from sqlalchemy import text
 
 
