@@ -243,10 +243,22 @@ def get_score_and_suggested_answer(job_role,job_description,question,user_answer
             store=True,
             include=["web_search_call.action.sources"]
         )
-        
-        response_data = response.output[1].content[0].text
+        print("RESPONSE DATA", response)
+        #response_data = response.output[1].content[0].text
         # Convert string to dict
-        response_dict = json.loads(response_data)
+        json_str = None
+
+        for item in response.output:
+            if item.type == "message":
+                for content in item.content:
+                    if content.type == "output_text":
+                        json_str = content.text
+                        break
+
+        if json_str is None:
+            raise ValueError("No JSON response found")
+        
+        response_dict = json.loads(json_str)
 
         # Output directory
         output_dir = Path(PROJECT_ROOT) / "files/answers"

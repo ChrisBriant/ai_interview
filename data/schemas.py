@@ -47,8 +47,14 @@ class SessionResponseSchema(BaseModel):
 
 class RoleQuestionAnswerInputSchema(BaseModel):
     session_id : int
-    role_id : int
     question_id : int
     user_answer : str
+
+class ScoredAnswerSchema(BaseModel):
+    scored_answer_id : int
+    score : int
+    question : QuestionSchema
+    suggested_answer : AnswerSchema
+    user_answer : AnswerSchema
 
 

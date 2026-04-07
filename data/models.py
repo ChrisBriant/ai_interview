@@ -263,7 +263,12 @@ class Session(Base):
     question_answers = relationship(
         "Answer",
         back_populates="session"
-    ) 
+    )
+
+    scored_answers = relationship(
+        "ScoredAnswer",
+        back_populates="session"
+    )
     
     @classmethod
     async def exists(cls, db: AsyncSession, session_id: int) -> bool:
@@ -312,12 +317,38 @@ class Session(Base):
         """
         Fetch a session by ID, including all questions and their associated answers.
         """
+        sa_loader = selectinload(cls.scored_answers)
+
         result = await db.execute(
             select(cls)
             .where(cls.id == session_id)
             .options(
-                selectinload(cls.question_answers)
-                .selectinload(Answer.question)  # load linked question for each answer
+                sa_loader.selectinload(ScoredAnswer.scored_question),
+                sa_loader.selectinload(ScoredAnswer.user_answer),
+                sa_loader.selectinload(ScoredAnswer.suggested_answer),
+            )
+        )
+
+        session_obj = result.scalar_one_or_none()
+        return session_obj
+
+    @classmethod
+    async def get_session_with_scored_answers(cls, db: AsyncSession, session_id: int):
+        """
+        Fetch a session by ID, including all questions and their associated answers.
+        """
+        result = await db.execute(
+            select(cls)
+            .where(cls.id == session_id)
+            .options(
+                selectinload(cls.scored_answers)
+                    .selectinload(ScoredAnswer.scored_question),
+
+                selectinload(cls.scored_answers)
+                    .selectinload(ScoredAnswer.user_answer),
+
+                selectinload(cls.scored_answers)
+                    .selectinload(ScoredAnswer.suggested_answer),
             )
         )
 
@@ -451,6 +482,11 @@ class ScoredAnswer(Base):
         ForeignKey("answers.id", ondelete="CASCADE"),
         nullable=False
     )
+    session_id = Column(
+        Integer,
+        ForeignKey("sessions.id", ondelete="CASCADE"),
+        nullable=False
+    )
     added_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -475,6 +511,36 @@ class ScoredAnswer(Base):
         foreign_keys=[suggested_answer_id],
         back_populates="scored_as_suggested"
     )
+
+    session = relationship(
+        "Session",
+        back_populates="scored_answers"
+    ) 
+
+
+    @classmethod
+    async def create_scored_answer(
+        cls,
+        db: AsyncSession,
+        score: int,
+        session_id : int,
+        question_id: int,
+        user_answer_id: str,
+        suggested_answer_id: str
+    ):
+        scored_answer = cls(
+            score=score,
+            session_id=session_id,
+            question_id=question_id,
+            user_answer_id=user_answer_id,
+            suggested_answer_id=suggested_answer_id
+        )
+
+        db.add(scored_answer)
+        await db.commit()
+        await db.refresh(scored_answer)
+
+        return scored_answer
 
 #TESTING
 async def load_job_questions_from_json(json_data):

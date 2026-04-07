@@ -6,6 +6,7 @@ from data.models import (
     Session,
     Answer,
     Question,
+    ScoredAnswer,
 )
 from data.db import SessionLocal
 from data.schemas import (
@@ -16,11 +17,12 @@ from data.schemas import (
     QuestionAnswersSchema,
     AnswerSchema,
     SessionResponseSchema,
-    RoleQuestionAnswerInputSchema
+    RoleQuestionAnswerInputSchema,
+    ScoredAnswerSchema
 )
 from services.utils import construct_session_response
 from services.load_job_descriptions import ai_get_interview_questions_from_description
-from services.ai_interview import generate_ai_answer
+from services.ai_interview import generate_ai_answer, get_score_and_suggested_answer
 from typing import List
 from pathlib import Path
 import json
@@ -165,14 +167,74 @@ async def ask_questions(session_and_question_ids : SessionWithQuestionIdsSchema)
         return session_response
 
     
-@router.post("/scoreandsuggestanswer", response_model = str)
+@router.post("/scoreandsuggestanswer", response_model = ScoredAnswerSchema, status_code=status.HTTP_201_CREATED)
 async def score_and_suggest_answer(role_q_a_input : RoleQuestionAnswerInputSchema, api_key: str = Depends(get_api_key)):
     """
         Scores the user's answer and suggests an alternative answer
     """
     async with SessionLocal() as session:
-        question = Question.get_by_id(role_q_a_input.question_id)
+        question = await Question.get_by_id(session, role_q_a_input.question_id)
+        #print("Question Received", question)
+        print("Question Received", question.question_text, question.role.id)
+        #Get the response from AI
+        ai_response = get_score_and_suggested_answer(question.role.role_name,question.role.role_text,question.question_text, role_q_a_input.user_answer)
+        # print("------------------------")
+        # print("AI RESPONSE", ai_response)
+        # print("------------------------")
+        #ai_response = {'score': 1, 'suggested_answer': 'To ensure smooth implementation of a new security control across multiple environments, I would begin by fully understanding the technical architecture and relevant security requirements, as demonstrated through my prior experience with [specific technology or project from CV]. I would collaborate closely with project and architecture teams to analyse risks and define implementation requirements. Next, I would devise and document a deployment plan, including a comprehensive risk assessment and clear rollout steps. I would ensure proper configuration and integration with existing SIEM/SOAR tools and cloud environments, following secure-by-design principles. Throughout the process, I would engage stakeholders for feedback, perform controlled testing in a non-production environment, and monitor the rollout for issues. Post-implementation, I would review the controls for effectiveness, ensure documentation is up to date, and recommend continuous improvement actions based on outcomes and emerging trends.'}
+        #Add the user's answer to the question and the suggested answer
+        user_answer = await Answer.create_answer(session,int(role_q_a_input.session_id),question.id,role_q_a_input.user_answer)
+        suggested_answer = await Answer.create_answer(session,int(role_q_a_input.session_id),question.id,ai_response["suggested_answer"])
+        scored_answer = await ScoredAnswer.create_scored_answer(
+            session,
+            ai_response["score"],
+            int(role_q_a_input.session_id),
+            question.id,
+            user_answer.id,
+            suggested_answer.id)
 
+        
+        # session = await Session.get_session_with_questions_and_answers(session,int(role_q_a_input.session_id))
+
+        # print("CREATED SCORED ANSWER", session.scored_answers)
+        # scored_answer = session.scored_answers[0]
+        #Gather data for response output
+        user_answer_res = AnswerSchema.model_validate(scored_answer.user_answer)
+        suggested_answer_res = AnswerSchema.model_validate(scored_answer.suggested_answer)
+        question_res = QuestionSchema.model_validate(scored_answer.scored_question)
+
+        scored_answer_response= ScoredAnswerSchema(
+                scored_answer_id=scored_answer.id,
+                score =scored_answer.score,
+                question = question_res,
+                user_answer = user_answer_res,
+                suggested_answer = suggested_answer_res  
+        )
+    return scored_answer_response
+
+
+@router.get("/getsessionscoredanswers", response_model = List[ScoredAnswerSchema])
+async def get_session_scored_answers(session_id: int = Query(), api_key: str = Depends(get_api_key)):
+    """
+        Get the session with scored answers
+    """
+    async with SessionLocal() as session:
+        session = await Session.get_session_with_scored_answers(session,int(session_id))
+        scored_answers = []
+        for scored_answer in session.scored_answers:
+            user_answer = AnswerSchema.model_validate(scored_answer.user_answer)
+            suggested_answer = AnswerSchema.model_validate(scored_answer.suggested_answer)
+            question = QuestionSchema.model_validate(scored_answer.scored_question)
+
+            scored_answers.append(ScoredAnswerSchema(
+                scored_answer_id=scored_answer.id,
+                score =scored_answer.score,
+                question = question,
+                user_answer = user_answer,
+                suggested_answer = suggested_answer
+            ))
+        print("Session with scored answers", scored_answers)
+        return scored_answers
 
 
 
