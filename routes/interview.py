@@ -18,7 +18,9 @@ from data.schemas import (
     AnswerSchema,
     SessionResponseSchema,
     RoleQuestionAnswerInputSchema,
-    ScoredAnswerSchema
+    ScoredAnswerSchema,
+    ScoredSessionResponseSchema,
+    RoleAndSessionResponseSchema,
 )
 from services.utils import construct_session_response
 from services.load_job_descriptions import ai_get_interview_questions_from_description
@@ -120,14 +122,14 @@ async def get_roles_with_questions(api_key: str = Depends(get_api_key)):
 #INTERVIEWING
 
 @router.get("/startinterviewsession", response_model = int)
-async def start_interview():
+async def start_interview(role_id: int | None = Query(None), api_key: str = Depends(get_api_key)):
     """
         Starts a session by creating an entry in the sessions table
     """
 
     try:
         async with SessionLocal() as session:
-            session = await Session.create_session(db=session, thread_id=None)
+            session = await Session.create_session(db=session, thread_id=None, role_id=role_id)
             return session.id
     except Exception as e:
         print("ERROR STARTING THE SESSION",e)
@@ -213,13 +215,15 @@ async def score_and_suggest_answer(role_q_a_input : RoleQuestionAnswerInputSchem
     return scored_answer_response
 
 
-@router.get("/getsessionscoredanswers", response_model = List[ScoredAnswerSchema])
+@router.get("/getsessionscoredanswers", response_model = RoleAndSessionResponseSchema)
 async def get_session_scored_answers(session_id: int = Query(), api_key: str = Depends(get_api_key)):
     """
         Get the session with scored answers
     """
     async with SessionLocal() as session:
         session = await Session.get_session_with_scored_answers(session,int(session_id))
+        print("SESSION ROLE", session.job_role.questions)
+
         scored_answers = []
         for scored_answer in session.scored_answers:
             user_answer = AnswerSchema.model_validate(scored_answer.user_answer)
@@ -233,8 +237,24 @@ async def get_session_scored_answers(session_id: int = Query(), api_key: str = D
                 user_answer = user_answer,
                 suggested_answer = suggested_answer
             ))
-        print("Session with scored answers", scored_answers)
-        return scored_answers
+        scored_session_response = ScoredSessionResponseSchema(
+            id = session.id,
+            scored_answers = scored_answers
+        )
+        role_response = RoleResponseSchema.model_validate(session.job_role)
+        # role_response = RoleResponseSchema(
+        #     id=session.job_role.id,
+        #     role_name=session.job_role.role_name,
+        #     role_text=session.job_role.role_text,
+        #     quetions=session.job_role.questions
+        # )
+
+        role_and_session_response = RoleAndSessionResponseSchema(
+            role = role_response,
+            scored_session=scored_session_response
+        )
+        print("Session with scored answers", role_and_session_response)
+        return role_and_session_response
 
 
 

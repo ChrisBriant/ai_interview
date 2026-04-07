@@ -57,4 +57,11 @@ class ScoredAnswerSchema(BaseModel):
     suggested_answer : AnswerSchema
     user_answer : AnswerSchema
 
+class ScoredSessionResponseSchema(BaseModel):
+    id : int
+    scored_answers : List[ScoredAnswerSchema]
+
+class RoleAndSessionResponseSchema(BaseModel):
+    role : RoleResponseSchema
+    scored_session : ScoredSessionResponseSchema
 

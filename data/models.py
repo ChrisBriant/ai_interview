@@ -56,6 +56,11 @@ class JobRole(Base):
         cascade="all, delete-orphan"
     )
 
+    session =  relationship(
+        "Session",
+        back_populates="job_role"
+    )
+
 
     @classmethod
     async def create_from_ai_json(
@@ -249,6 +254,12 @@ class Session(Base):
         String,
         nullable=True
     )
+    #Optional role ID if the interview session is linked to one job role
+    role_id = Column(
+        Integer,
+        ForeignKey("jobroles.id", ondelete="CASCADE"),
+        nullable=True
+    )
     started_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -269,6 +280,11 @@ class Session(Base):
         "ScoredAnswer",
         back_populates="session"
     )
+
+    job_role = relationship(
+        "JobRole",
+        back_populates="session"
+    )
     
     @classmethod
     async def exists(cls, db: AsyncSession, session_id: int) -> bool:
@@ -282,8 +298,8 @@ class Session(Base):
         return result.scalar() is not None
 
     @classmethod
-    async def create_session(cls, db: AsyncSession, thread_id: str | None):
-        session = cls(thread_id=thread_id)
+    async def create_session(cls, db: AsyncSession, thread_id: str | None, role_id : int | None):
+        session = cls(thread_id=thread_id, role_id=role_id)
 
         db.add(session)
         await db.commit()
@@ -317,15 +333,12 @@ class Session(Base):
         """
         Fetch a session by ID, including all questions and their associated answers.
         """
-        sa_loader = selectinload(cls.scored_answers)
-
         result = await db.execute(
             select(cls)
             .where(cls.id == session_id)
             .options(
-                sa_loader.selectinload(ScoredAnswer.scored_question),
-                sa_loader.selectinload(ScoredAnswer.user_answer),
-                sa_loader.selectinload(ScoredAnswer.suggested_answer),
+                selectinload(cls.question_answers)
+                .selectinload(Answer.question)  # load linked question for each answer
             )
         )
 
@@ -337,18 +350,16 @@ class Session(Base):
         """
         Fetch a session by ID, including all questions and their associated answers.
         """
+        sa_loader = selectinload(cls.scored_answers)
+
         result = await db.execute(
             select(cls)
             .where(cls.id == session_id)
             .options(
-                selectinload(cls.scored_answers)
-                    .selectinload(ScoredAnswer.scored_question),
-
-                selectinload(cls.scored_answers)
-                    .selectinload(ScoredAnswer.user_answer),
-
-                selectinload(cls.scored_answers)
-                    .selectinload(ScoredAnswer.suggested_answer),
+                selectinload(cls.job_role).selectinload(JobRole.questions),
+                sa_loader.selectinload(ScoredAnswer.scored_question),
+                sa_loader.selectinload(ScoredAnswer.user_answer),
+                sa_loader.selectinload(ScoredAnswer.suggested_answer),
             )
         )
 
