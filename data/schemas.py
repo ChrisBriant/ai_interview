@@ -26,6 +26,13 @@ class RoleResponseSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+#Just the role without any questions
+class RoleWDescriptionResponseSchema(BaseModel):
+    role_name : str
+    role_text : str
+
+    model_config = ConfigDict(from_attributes=True)
+
 class SessionWithQuestionIdsSchema(BaseModel):
     session_id : int
     question_ids : List[int]
@@ -44,6 +51,14 @@ class QuestionAnswersSchema(BaseModel):
 class SessionResponseSchema(BaseModel):
     id : int
     question_answers : List[QuestionAnswersSchema]
+
+#Just the session with the time started and the role
+class SessionRoleResponseSchema(BaseModel):
+    id : int
+    started_at : datetime
+    job_role: RoleWDescriptionResponseSchema | None
+
+    model_config = ConfigDict(from_attributes=True)
 
 class RoleQuestionAnswerInputSchema(BaseModel):
     session_id : int

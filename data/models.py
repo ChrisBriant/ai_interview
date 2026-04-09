@@ -366,6 +366,17 @@ class Session(Base):
         session_obj = result.scalar_one_or_none()
         return session_obj
 
+    @classmethod
+    async def get_all_sessions(cls, db: AsyncSession):
+        result = await db.execute(
+            select(cls)
+            .options(
+                selectinload(cls.job_role)
+            )
+        )
+
+        return result.scalars().all()
+    
 
 class Answer(Base):
     __tablename__ = "answers"

@@ -21,6 +21,8 @@ from data.schemas import (
     ScoredAnswerSchema,
     ScoredSessionResponseSchema,
     RoleAndSessionResponseSchema,
+    SessionRoleResponseSchema,
+    RoleWDescriptionResponseSchema,
 )
 from services.utils import construct_session_response
 from services.load_job_descriptions import ai_get_interview_questions_from_description
@@ -285,25 +287,17 @@ async def get_session_by_id(session_id: int = Query()):
             raise HTTPException(status_code=404,detail="Interview session not found")
         
         session_response = construct_session_response(interview_session)
-        # question_answers_list: List[QuestionAnswersSchema] = []
-        # for answer in interview_session.question_answers:
-        #     question_answers_list.append(
-        #         QuestionAnswersSchema(
-        #             question=answer.question,  # relies on QuestionSchema.from_attributes=True
-        #             answers=[
-        #                 AnswerSchema(
-        #                     id=answer.id,
-        #                     answer_text=answer.answer_text,
-        #                     added_at=answer.added_at
-        #                 )
-        #             ]
-        #         )
-        #     )
 
-        # session_response = SessionResponseSchema(
-        #     id=interview_session.id,
-        #     question_answers=question_answers_list
-        # )
-
-        print("SESSION FOUND", session_response)
         return session_response
+
+@router.get("/getallsessions", response_model = List[SessionRoleResponseSchema])
+async def get_all_sessions():
+    async with SessionLocal() as session:
+        sessions = await Session.get_all_sessions(session)
+        session_list = []
+        for session_res in sessions:
+            session_response_obj = SessionRoleResponseSchema.model_validate(session_res)
+            session_list.append(
+                session_response_obj
+            )
+        return session_list
