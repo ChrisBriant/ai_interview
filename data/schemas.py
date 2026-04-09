@@ -1,7 +1,6 @@
 from pydantic import BaseModel, ConfigDict, computed_field
-from typing import Optional
 from datetime import datetime
-from typing import List
+from typing import List, TypeVar, Optional, Generic
 
 
 class RoleAndDescriptionSchema(BaseModel):
@@ -59,6 +58,21 @@ class SessionRoleResponseSchema(BaseModel):
     job_role: RoleWDescriptionResponseSchema | None
 
     model_config = ConfigDict(from_attributes=True)
+
+class PaginatedSessionResponse(BaseModel):
+    data: List[SessionRoleResponseSchema]
+    next_page: Optional[str]
+
+#For Generic Pagination
+T = TypeVar("T")
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    data: List[T]
+    next_page: Optional[str]
+    total: int
+    total_pages: int
+    page: int
+    page_size: int
 
 class RoleQuestionAnswerInputSchema(BaseModel):
     session_id : int

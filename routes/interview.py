@@ -23,6 +23,8 @@ from data.schemas import (
     RoleAndSessionResponseSchema,
     SessionRoleResponseSchema,
     RoleWDescriptionResponseSchema,
+    PaginatedSessionResponse,
+    PaginatedResponse,
 )
 from services.utils import construct_session_response
 from services.load_job_descriptions import ai_get_interview_questions_from_description
@@ -33,6 +35,7 @@ import json
 import os
 import bleach
 import base64
+from math import ceil
 from services.auth import get_api_key
 
 router = APIRouter()
@@ -40,9 +43,9 @@ router = APIRouter()
 # Go to project root (adjust parents[n] if needed)
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-ALLOWED_REDIRECTS = [
-    "uk.chrisbriant.idbroker://callback",
-]
+# ALLOWED_REDIRECTS = [
+#     "uk.chrisbriant.idbroker://callback",
+# ]
 
 
 @router.post("/createroleandquestionset", response_model = RoleResponseSchema, status_code=status.HTTP_201_CREATED)
@@ -290,14 +293,53 @@ async def get_session_by_id(session_id: int = Query()):
 
         return session_response
 
-@router.get("/getallsessions", response_model = List[SessionRoleResponseSchema])
-async def get_all_sessions():
+# @router.get("/getallsessions", response_model = List[SessionRoleResponseSchema])
+# async def get_all_sessions():
+#     async with SessionLocal() as session:
+#         sessions = await Session.get_all_sessions(session)
+#         session_list = []
+#         for session_res in sessions:
+#             session_response_obj = SessionRoleResponseSchema.model_validate(session_res)
+#             session_list.append(
+#                 session_response_obj
+#             )
+#         return session_list
+
+@router.get("/getallsessions", response_model = PaginatedResponse)
+async def get_all_sessions(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100)
+):
     async with SessionLocal() as session:
-        sessions = await Session.get_all_sessions(session)
-        session_list = []
-        for session_res in sessions:
-            session_response_obj = SessionRoleResponseSchema.model_validate(session_res)
-            session_list.append(
-                session_response_obj
+        sessions, total = await Session.get_all_sessions(
+            session,
+            page=page,
+            page_size=page_size
+        )
+
+        session_list = [
+            SessionRoleResponseSchema.model_validate(s)
+            for s in sessions
+        ]
+
+        total_pages = ceil(total / page_size)
+
+        # Build next page URL
+        next_page: Optional[str] = None
+        if len(sessions) == page_size:
+            next_page = str(
+                request.url.include_query_params(
+                    page=page + 1,
+                    page_size=page_size
+                )
             )
-        return session_list
+
+        return {
+            "data": session_list,
+            "next_page": next_page,
+            "total": total,
+            "total_pages": total_pages,
+            "page": page,
+            "page_size": page_size
+        }

@@ -366,17 +366,37 @@ class Session(Base):
         session_obj = result.scalar_one_or_none()
         return session_obj
 
+    # @classmethod
+    # async def get_all_sessions(cls, db: AsyncSession):
+    #     result = await db.execute(
+    #         select(cls)
+    #         .options(
+    #             selectinload(cls.job_role)
+    #         )
+    #     )
+
+    #     return result.scalars().all()
+    
     @classmethod
-    async def get_all_sessions(cls, db: AsyncSession):
+    async def get_all_sessions(cls, db: AsyncSession, page: int, page_size: int):
+        #Get the session count
+        total_result = await db.execute(
+            select(func.count()).select_from(cls)
+        )
+        total = total_result.scalar_one()
+
+        #Get the paginated sessions
+        offset = (page - 1) * page_size
+
         result = await db.execute(
             select(cls)
-            .options(
-                selectinload(cls.job_role)
-            )
+            .options(selectinload(cls.job_role))
+            .offset(offset)
+            .limit(page_size)
         )
 
-        return result.scalars().all()
-    
+        return result.scalars().all(), total
+
 
 class Answer(Base):
     __tablename__ = "answers"
