@@ -16,6 +16,13 @@ class QuestionSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class QuestionInputSchema(BaseModel):
+    question_text : str
+    type : str
+
+class RoleAndQuestionSetInputSchema(BaseModel):
+    role_id : int
+    question_set : List[QuestionInputSchema]
 
 class RoleResponseSchema(BaseModel):
     id: int

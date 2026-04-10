@@ -83,7 +83,7 @@ class JobRole(Base):
             data
         )
 
-        await db.commit()
+        #await db.commit()
 
         #await db.refresh(role)
 
@@ -116,6 +116,17 @@ class JobRole(Base):
         )
         roles = result.scalars().all()
         return roles
+
+    @classmethod
+    async def get_role_with_questions_by_id(cls, db: AsyncSession, role_id : int):
+        result = await db.execute(
+            select(cls)
+            .options(selectinload(cls.questions))
+            .where(cls.id == role_id)
+        )
+
+        return result.scalar_one_or_none()
+
 
     @classmethod
     async def get_random_questions(
@@ -245,6 +256,7 @@ class Question(Base):
                 )
 
                 db.add(question)
+        await db.commit()
 
 class Session(Base):
     __tablename__ = "sessions"

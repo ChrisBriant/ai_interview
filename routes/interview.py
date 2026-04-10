@@ -6,12 +6,14 @@ from data.models import (
     Session,
     Answer,
     Question,
+    QuestionType,
     ScoredAnswer,
 )
 from data.db import SessionLocal
 from data.schemas import (
     RoleAndDescriptionSchema,
     QuestionSchema,
+    RoleAndQuestionSetInputSchema,
     RoleResponseSchema,
     SessionWithQuestionIdsSchema,
     QuestionAnswersSchema,
@@ -53,8 +55,6 @@ async def create_role_and_question_set(role_and_description : RoleAndDescription
     """
         Uses AI to generate an interview question set for a given job role and job description
     """
-    print("ROLE TO SEND TO AI", role_and_description.role_description, role_and_description.role_name)
-
     #Sanitize the feedback input data
     cleaned_role_name = bleach.clean(role_and_description.role_name, tags=[], attributes={}, strip=True)
     cleaned_role_description = bleach.clean(role_and_description.role_description, tags=[], attributes={}, strip=True)
@@ -88,6 +88,76 @@ async def create_role_and_question_set(role_and_description : RoleAndDescription
     except Exception as e:
         print("Error adding to database", e)
         raise HTTPException(status_code=400,detail="Unable to generate role data")
+
+
+@router.post("/createrole", response_model = RoleResponseSchema, status_code=status.HTTP_201_CREATED)
+async def create_role(role_and_description : RoleAndDescriptionSchema, api_key: str = Depends(get_api_key)):
+    """
+        Create a role without generating the questions
+    """
+    #Sanitize the feedback input data
+    cleaned_role_name = bleach.clean(role_and_description.role_name, tags=[], attributes={}, strip=True)
+    cleaned_role_description = bleach.clean(role_and_description.role_description, tags=[], attributes={}, strip=True)
+    try: 
+        async with SessionLocal() as session:
+            role = await JobRole.create_from_ai_json(
+                db=session,
+                data={
+                    "role_name" : cleaned_role_name,
+                    "role_text" : cleaned_role_description,
+                }
+            )
+            role_data = RoleResponseSchema(
+                id=role.id,
+                role_name=role.role_name,
+                role_text=role.role_text,
+                questions=[]
+            )
+            return role_data
+    except Exception as e:
+        print("Error adding to database", e)
+        raise HTTPException(status_code=400,detail="Unable to generate role data")
+
+
+@router.post("/addquestionstorole", response_model = RoleResponseSchema, status_code=status.HTTP_201_CREATED)
+async def add_questions_to_role(role_question_set : RoleAndQuestionSetInputSchema , api_key: str = Depends(get_api_key)):
+    """
+        Add questions to a role
+        role_id : integer
+        question_set : List of questions 
+            question_text : the question itself str
+            type : str - must be of "technical", "architecture", "scenario" or "behavioural"
+    """
+    #Get the accepted question types
+    valid_question_types = [ qt.value for qt in list(QuestionType) ]
+    print(valid_question_types)
+    #Prepare the question list as cleaned text from the input
+    cleaned_questions = {
+        "technical_questions" : [],
+        "architecture_questions" : [],
+        "scenario_questions" : [],
+        "behavioural_questions" : []
+    }
+    for input_question in role_question_set.question_set:
+        #Check the type is valid
+        if input_question.type not in valid_question_types:
+            raise HTTPException(status_code=400,detail="Invalid question type encountered")
+        #Get the question set according to type
+        new_questions = [ *cleaned_questions.get(f"{input_question.type}_questions"), bleach.clean(input_question.question_text)]
+        cleaned_questions[f"{input_question.type}_questions"] = new_questions
+    async with SessionLocal() as session:
+        #Add the questions to the role
+        await Question.add_questions_from_ai_json(
+            session,
+            role_id=role_question_set.role_id,
+            data=cleaned_questions
+        )
+        #Get the role to output as the response
+        role_data = await JobRole.get_role_with_questions_by_id(session,role_id=role_question_set.role_id)
+        role_response = RoleResponseSchema.model_validate(role_data)
+    return role_response
+
+
 
 
 @router.get("/getroleswithquestions", response_model = List[RoleResponseSchema])
