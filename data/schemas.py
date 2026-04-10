@@ -98,6 +98,6 @@ class ScoredSessionResponseSchema(BaseModel):
     scored_answers : List[ScoredAnswerSchema]
 
 class RoleAndSessionResponseSchema(BaseModel):
-    role : RoleResponseSchema
+    role : RoleResponseSchema | None
     scored_session : ScoredSessionResponseSchema
 

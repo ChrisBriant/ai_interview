@@ -28,7 +28,7 @@ from data.schemas import (
     PaginatedSessionResponse,
     PaginatedResponse,
 )
-from services.utils import construct_session_response
+from services.utils import construct_session_response, construct_session_scored_answers_response
 from services.load_job_descriptions import ai_get_interview_questions_from_description
 from services.ai_interview import generate_ai_answer, get_score_and_suggested_answer
 from typing import List
@@ -264,7 +264,7 @@ async def score_and_suggest_answer(role_q_a_input : RoleQuestionAnswerInputSchem
         suggested_answer = await Answer.create_answer(session,int(role_q_a_input.session_id),question.id,ai_response["suggested_answer"])
         scored_answer = await ScoredAnswer.create_scored_answer(
             session,
-            ai_response["score"],
+            int(ai_response["score"]),
             int(role_q_a_input.session_id),
             question.id,
             user_answer.id,
@@ -297,7 +297,7 @@ async def get_session_scored_answers(session_id: int = Query(), api_key: str = D
     """
     async with SessionLocal() as session:
         session = await Session.get_session_with_scored_answers(session,int(session_id))
-        print("SESSION ROLE", session.job_role.questions)
+        #print("SESSION ROLE", session.job_role.questions)
 
         scored_answers = []
         for scored_answer in session.scored_answers:
@@ -316,7 +316,10 @@ async def get_session_scored_answers(session_id: int = Query(), api_key: str = D
             id = session.id,
             scored_answers = scored_answers
         )
-        role_response = RoleResponseSchema.model_validate(session.job_role)
+        if session.job_role:
+            role_response = RoleResponseSchema.model_validate(session.job_role)
+        else:
+            role_response = None
         # role_response = RoleResponseSchema(
         #     id=session.job_role.id,
         #     role_name=session.job_role.role_name,
@@ -355,7 +358,7 @@ async def get_session_by_id(session_id: int = Query()):
         Get interview session and return an object with questions and answers
     """
     async with SessionLocal() as session:
-        interview_session = await Session.get_session_with_questions_and_answers(session,session_id)
+        interview_session = await Session.get_session_with_scored_answers(session,session_id)
         if not interview_session:
             raise HTTPException(status_code=404,detail="Interview session not found")
         

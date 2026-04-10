@@ -53,3 +53,24 @@ def construct_session_response(interview_session: Session) -> SessionResponseSch
         id=interview_session.id,
         question_answers=question_answers_list
     )
+
+
+def construct_session_scored_answers_response(interview_session: Session) -> SessionResponseSchema:
+    pass
+    # grouped_answers = defaultdict(list)
+    # for answer in interview_session.question_answers:
+    #     grouped_answers[answer.question.id].append(answer)
+
+    # question_answers_list: List[QuestionAnswersSchema] = []
+
+    # user_answer_res = AnswerSchema.model_validate(scored_answer.user_answer)
+    # suggested_answer_res = AnswerSchema.model_validate(scored_answer.suggested_answer)
+    # question_res = QuestionSchema.model_validate(scored_answer.scored_question)
+
+    # scored_answer_response= ScoredAnswerSchema(
+    #         scored_answer_id=scored_answer.id,
+    #         score =scored_answer.score,
+    #         question = question_res,
+    #         user_answer = user_answer_res,
+    #         suggested_answer = suggested_answer_res  
+    # )
